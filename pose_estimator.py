@@ -3,11 +3,6 @@ import numpy as np
 import json 
 import time
 
-import rclpy
-from rclpy.node import Node
-from sensor_msgs.msg import Image
-
-
 class PoseEstimate(Node):
     def __init__(self):
         super().__init__('detection_node')
@@ -22,7 +17,7 @@ class PoseEstimate(Node):
         self.K = np.array(calibration_params["camera_matrix"])
 
         self.fisheye = True
-        self.ros = True
+        self.ros = False
 
         # Board paramters
         self.n_rows = 9
@@ -35,9 +30,15 @@ class PoseEstimate(Node):
         self.objp = self.square_size * self.objp
 
         if self.ros:
+            import rclpy
+            from rclpy.node import Node
+            from sensor_msgs.msg import Image
+
             self.subscription = self.create_subscription(Image, '/blackfly_1/image_raw', self.image_callback, 10)
             rclpy.spin(self)
         else:
+            print("here")
+
             video_path = '/home/gilbertogonzalez/Downloads/IMG_0447.mov'
             # Open the video file
             self.cap = cv2.VideoCapture(video_path)
