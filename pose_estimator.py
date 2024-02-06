@@ -3,18 +3,16 @@ import numpy as np
 import json 
 import time
 
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Image
+
+
 class PoseEstimate(Node):
     def __init__(self):
         super().__init__('detection_node')
     
-        # Load intrinsics
-        calibration_path = "../../../../systems/SVM/birdseye/fisheye/intrinsics/22611253.json"
-
-        with open(calibration_path, 'r') as json_file:
-            calibration_params = json.load(json_file)
-
-        self.D = np.array(calibration_params["distortion_coefficients"])
-        self.K = np.array(calibration_params["camera_matrix"])
+        
 
         self.fisheye = True
         self.ros = False
@@ -30,16 +28,28 @@ class PoseEstimate(Node):
         self.objp = self.square_size * self.objp
 
         if self.ros:
-            import rclpy
-            from rclpy.node import Node
-            from sensor_msgs.msg import Image
+            # Load intrinsics
+            calibration_path = "./calibration/fisheye5mp.json"
+
+            with open(calibration_path, 'r') as json_file:
+                calibration_params = json.load(json_file)
+
+            self.D = np.array(calibration_params["distortion_coefficients"])
+            self.K = np.array(calibration_params["camera_matrix"])
 
             self.subscription = self.create_subscription(Image, '/blackfly_1/image_raw', self.image_callback, 10)
             rclpy.spin(self)
         else:
-            print("here")
+            # Load intrinsics
+            calibration_path = "./calibration/iphone12.json"
 
-            video_path = '/home/gilbertogonzalez/Downloads/IMG_0447.mov'
+            with open(calibration_path, 'r') as json_file:
+                calibration_params = json.load(json_file)
+
+            self.D = np.array(calibration_params["distortion_coefficients"])
+            self.K = np.array(calibration_params["camera_matrix"])
+
+            video_path = './test_assets/IMG_0447.mov'
             # Open the video file
             self.cap = cv2.VideoCapture(video_path)
             self.estimate_vid()
@@ -50,7 +60,6 @@ class PoseEstimate(Node):
         cv_img = cv2.cvtColor(buf, cv2.COLOR_BAYER_RG2RGB)
         cv_image = cv2.rotate(cv_img, cv2.ROTATE_90_CLOCKWISE)
         
-
         self.estimate(cv_image)
 
     def estimate(self, img):
@@ -125,7 +134,7 @@ class PoseEstimate(Node):
 
                 obj_points = np.array(obj_points, dtype=np.float32).squeeze()
 
-                ret_pnp, rvec, tvec = cv2.solvePnP(obj_points, img_points, np.eye(3), np.zeros((1,5)), flags=cv2.SOLVEPNP_ITERATIVE)
+                ret_pnp, rvec, tvec = cv2.solvePnP(obj_points, img_points, self.K, self.D, flags=cv2.SOLVEPNP_ITERATIVE)
 
 
                 # print(f"\nRmtx: {R}")
@@ -135,7 +144,7 @@ class PoseEstimate(Node):
                 
                 if ret_pnp:
                     cv2.drawChessboardCorners(img, (self.n_rows,self.n_cols), corners, ret)
-                    img_draw = cv2.drawFrameAxes(img, np.eye(3), np.zeros((1,5)), rvec, tvec, 0.2, 5)
+                    img = cv2.drawFrameAxes(img, self.K, self.D, rvec, tvec, 0.2, 5)
                     self.show(img)
                 else:
                     print(f"ret_pnp: {ret_pnp}")
