@@ -1,169 +1,103 @@
-import cv2
 import numpy as np
-import json 
-import time
+import cv2
+import json
 
-import rclpy
-from rclpy.node import Node
-from sensor_msgs.msg import Image
+def projpts(pts, P):
+    projected = P.dot(pts)
+    w = projected[2, :]
+    projected /= w
 
+    return projected
 
-class PoseEstimate(Node):
-    def __init__(self):
-        super().__init__('detection_node')
+def draw_axes(frame, R, t, mtx, dist, line_length):
+    xyzo = np.float32([[line_length, 0, 0], [0, line_length, 0], [0, 0, -line_length], [0, 0, 0]]).reshape(-1,3)
+
+    axis, _ = cv2.projectPoints(xyzo, R, t, mtx, dist)
+    axis = axis.astype(int)
+    cv2.line(frame, tuple(axis[3].ravel()),
+                    tuple(axis[0].ravel()), (255, 0, 0), 3)
+    cv2.line(frame, tuple(axis[3].ravel()),
+                    tuple(axis[1].ravel()), (0, 255, 0), 3)
+    cv2.line(frame, tuple(axis[3].ravel()),
+                    tuple(axis[2].ravel()), (0, 0, 255), 3)
+
+def draw_cube(frame, P, x, y, z, w, h, color):
+    pts = np.float32([
+        [x, y, -z, 1], [x + w, y, -z, 1], [x + w, y + w, -z, 1], [x, y + w, -z, 1],
+        [x, y, -(z + h), 1], [x + w, y, -(z + h), 1],
+        [x + w, y + w, -(z + h), 1], [x, y + w, -(z + h), 1]
+    ]).reshape(-1, 4).transpose()
+
+    projected = projpts(pts, P)
+    under = projected[:, :4]
+    over = projected[:, 4:]
+
+    under_fill = np.array(
+        [[int(under[0, i]), int(under[1, i])] for i in range(under.shape[1])]
+    )
+
+    cv2.fillPoly(frame, pts = [under_fill], color=color)
+
+    [cv2.line(frame, (int(under[0, i]), int(under[1, i])),
+                     (int(under[0, i - 1]), int(under[1, i - 1])), (0, 255, 0), 2)
+        for i in range(under.shape[1])]
+
+    [cv2.line(frame, (int(over[0, i]), int(over[1, i])),
+                     (int(over[0, i - 1]), int(over[1, i - 1])), (255, 0, 0), 2)
+        for i in range(over.shape[1])]
+
+    [cv2.line(frame, (int(under[0, i]), int(under[1, i])),
+                     (int(over[0, i]), int(over[1, i])), (0, 0, 255), 2)
+        for i in range(under.shape[1])]
     
-        
-
-        self.fisheye = True
-        self.ros = False
-
-        # Board paramters
-        self.n_rows = 9
-        self.n_cols = 6 
-        self.square_size = 0.03 # m
-
-        # Initialize object points in the real world
-        self.objp = np.zeros((self.n_rows * self.n_cols, 3), np.float32)
-        self.objp[:,:2] = np.mgrid[0:self.n_rows, 0:self.n_cols].T.reshape(-1, 2)  # Define the coordinates of a flat checkerboard in 3D (Z=0)
-        self.objp = self.square_size * self.objp
-
-        if self.ros:
-            # Load intrinsics
-            calibration_path = "./calibration/fisheye5mp.json"
-
-            with open(calibration_path, 'r') as json_file:
-                calibration_params = json.load(json_file)
-
-            self.D = np.array(calibration_params["distortion_coefficients"])
-            self.K = np.array(calibration_params["camera_matrix"])
-
-            self.subscription = self.create_subscription(Image, '/blackfly_1/image_raw', self.image_callback, 10)
-            rclpy.spin(self)
-        else:
-            # Load intrinsics
-            calibration_path = "./calibration/iphone12.json"
-
-            with open(calibration_path, 'r') as json_file:
-                calibration_params = json.load(json_file)
-
-            self.D = np.array(calibration_params["distortion_coefficients"])
-            self.K = np.array(calibration_params["camera_matrix"])
-
-            video_path = './test_assets/IMG_0447.mov'
-            # Open the video file
-            self.cap = cv2.VideoCapture(video_path)
-            self.estimate_vid()
-
-    def image_callback(self, msg):
-        buf = np.frombuffer(msg.data, dtype=np.uint8)
-        buf = buf.reshape(msg.height, msg.width, 1)
-        cv_img = cv2.cvtColor(buf, cv2.COLOR_BAYER_RG2RGB)
-        cv_image = cv2.rotate(cv_img, cv2.ROTATE_90_CLOCKWISE)
-        
-        self.estimate(cv_image)
-
-    def estimate(self, img):
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-        # Arrays to store object points and image points
-        obj_points = []  # 3D points in real world space
-        img_points = []  # 2D points in image plane
-
-        # Detect corners in the image
-        start = time.time()
-        ret, corners = cv2.findChessboardCorners(gray, (self.n_rows, self.n_cols), flags=cv2.CALIB_CB_FAST_CHECK)
-        end = time.time()
-        print(f"time: {end-start}")
-        if ret:
-            corner_size = 11
-            criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 1000, 0.0001)
-            corners = cv2.cornerSubPix(gray, corners, (corner_size, corner_size), (-1, -1), criteria)
-
-            obj_points.append(self.objp)
-            img_points.append(corners)
-        else:
-            print(f"ret: {ret}")
-            self.show(img)
-            return
-
-        img_points = np.array(img_points, dtype=np.float32).squeeze()
-        img_points = np.expand_dims(img_points, 1)
-
-        obj_points = np.array(obj_points, dtype=np.float32).squeeze()
-
-        undistorted = cv2.fisheye.undistortPoints(img_points, self.K, self.D)
-        ret_pnp, rvec, tvec = cv2.solvePnP(obj_points, undistorted, np.eye(3), np.zeros((1,5)))
-
-        # print(f"\nRmtx: {R}")
-        # print(f"tvec: {tvec}")
-
-        # Draw and show
-        if ret_pnp:
-            # cv2.drawChessboardCorners(img, (self.n_rows,self.n_cols), corners, ret)
-            img_draw = cv2.drawFrameAxes(img, self.K, self.D, rvec, tvec, 0.2, 5)
-            self.show(img_draw)
-        else:
-            print(f"ret_pnp: {ret_pnp}")
-            return
-        
-    def estimate_vid(self):
-        while True:
-            # Read a frame from the video
-            ret, img = self.cap.read()
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-            # Arrays to store object points and image points
-            obj_points = []  # 3D points in real world space
-            img_points = []  # 2D points in image plane
-
-            # Detect corners in the image
-            start = time.time()
-            ret, corners = cv2.findChessboardCorners(gray, (self.n_rows, self.n_cols), flags=cv2.CALIB_CB_FAST_CHECK)
-            end = time.time()
-            print(f"time: {end-start}")
-            if ret:
-                corner_size = 11
-                criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 1000, 0.0001)
-                corners = cv2.cornerSubPix(gray, corners, (corner_size, corner_size), (-1, -1), criteria)
-
-                obj_points.append(self.objp)
-                img_points.append(corners)
-
-                img_points = np.array(img_points, dtype=np.float32).squeeze()
-                img_points = np.expand_dims(img_points, 1)
-
-                obj_points = np.array(obj_points, dtype=np.float32).squeeze()
-
-                ret_pnp, rvec, tvec = cv2.solvePnP(obj_points, img_points, self.K, self.D, flags=cv2.SOLVEPNP_ITERATIVE)
-
-
-                # print(f"\nRmtx: {R}")
-                # print(f"tvec: {tvec}")
-
-                # Draw and show
-                
-                if ret_pnp:
-                    cv2.drawChessboardCorners(img, (self.n_rows,self.n_cols), corners, ret)
-                    img = cv2.drawFrameAxes(img, self.K, self.D, rvec, tvec, 0.2, 5)
-                    self.show(img)
-                else:
-                    print(f"ret_pnp: {ret_pnp}")
-                    # return
-            else:
-                print(f"ret: {ret}")
-                self.show(img)
-                # return
-
-            
-
-    def show(self, img):
-        img = cv2.resize(img, (0,0), fx=0.5, fy=0.5)
-        cv2.imshow('img', img)
-        cv2.waitKey(1)
-
-def main(args=None):
-    rclpy.init(args=args)
-    PoseEstimate()
-
 if __name__ == '__main__':
-    main()
+    # Calibration steo
+    patternsize = (9, 6)
+
+    # Load intrinsics
+    calibration_path = "../camera-world/calibration/iphone12.json"
+
+    with open(calibration_path, 'r') as json_file:
+        calibration_params = json.load(json_file)
+
+    dist = np.array(calibration_params["distortion_coefficients"])
+    mtx = np.array(calibration_params["camera_matrix"])
+
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.0001)
+    r, c = patternsize
+    objp = np.zeros((r * c, 3), np.float32)
+    objp[:, :2] = np.mgrid[0:r, 0:c].T.reshape(-1, 2)
+
+    video_path = '../camera-world/test_assets/IMG_0447.mov'
+    # Open the video file
+    cap = cv2.VideoCapture(video_path)
+
+    while True:
+        ret, img = cap.read()
+        # img = cv2.imread("./test_assets/img.png")
+
+        key = cv2.waitKey(1)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        detected, corners = cv2.findChessboardCorners(gray, patternsize, flags=cv2.CALIB_CB_FAST_CHECK)
+
+        if detected:
+            cv2.cornerSubPix(gray, corners, (11,11), (-1,-1), criteria)
+            _, rvec, tvec = cv2.solvePnP(objp, corners, mtx, dist)
+            R, _ = cv2.Rodrigues(rvec)
+            P = mtx.dot(np.hstack([R, tvec]))
+
+            x = y = z = 0
+
+            draw_axes(img, R, tvec, mtx, dist, 2)
+            for i in range(0, patternsize[0] - 1, 2):
+                for j in range(0, patternsize[1] - 1, 2):
+                        draw_cube(img, P, (x + i), (y + j), z, 1, 1, (10, 10, 100))
+
+        cv2.imshow('img', img)
+
+        if key == ord('q'):
+            cv2.destroyAllWindows()
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
