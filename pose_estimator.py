@@ -90,8 +90,14 @@ if __name__ == '__main__':
             for i in range(0, patternsize[0] - 1, 2):
                 for j in range(0, patternsize[1] - 1, 2):
                         draw_cube(blank_img, P, (x + i), (y + j), z, 1, 1, (10, 10, 100))
+        else:
+            cv2.putText(blank_img, "No corners detected", (10, blank_img.shape[0]-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 2, cv2.LINE_AA)
+            cv2.putText(img, "No corners detected", (10, img.shape[0]-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 2, cv2.LINE_AA)
         
-        cv2.imshow('img', blank_img)
+        resize1 = cv2.resize(blank_img, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
+        resize2 = cv2.resize(img, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
+        cv2.imshow('pose_estimation', resize1)
+        cv2.imshow('original_img', resize2)
 
         if key == ord('q'):
             cv2.destroyAllWindows()
