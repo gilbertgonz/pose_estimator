@@ -67,6 +67,9 @@ if __name__ == '__main__':
 
     while True:
         ret, img = cap.read()
+        if not ret:
+            print("\nAll done, goodbye!")
+            break
         # img = cv2.imread("/test_assets/img.png")
 
         key = cv2.waitKey(1)
@@ -122,10 +125,11 @@ if __name__ == '__main__':
             cv2.putText(img, "No corners detected", (10, img.shape[0]-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 2, cv2.LINE_AA)
             
         # Resizing
-        resize1 = cv2.resize(proj_img, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
-        resize2 = cv2.resize(pose_img, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
-        resize3 = cv2.resize(img, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
-        resize4 = cv2.resize(welcome_img, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
+        img_scale = 0.35
+        resize1 = cv2.resize(proj_img, None, fx=img_scale, fy=img_scale, interpolation=cv2.INTER_AREA)
+        resize2 = cv2.resize(pose_img, None, fx=img_scale, fy=img_scale, interpolation=cv2.INTER_AREA)
+        resize3 = cv2.resize(img, None, fx=img_scale, fy=img_scale, interpolation=cv2.INTER_AREA)
+        resize4 = cv2.resize(welcome_img, None, fx=img_scale, fy=img_scale, interpolation=cv2.INTER_AREA)
 
         # Concat imgs together for better viz
         half1  = cv2.hconcat([resize3, resize2]) 
