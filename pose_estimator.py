@@ -71,7 +71,7 @@ if __name__ == '__main__':
             if not ret:
                 print("\nAll done, goodbye!")
                 break
-            # img = cv2.imread("/test_assets/img.png")
+            # img = cv2.imread("/test_assets/img.png") # for debugging
 
             key = cv2.waitKey(1)
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -80,7 +80,6 @@ if __name__ == '__main__':
 
             if ret:
                 cv2.cornerSubPix(gray, corners, (11,11), (-1,-1), criteria)
-                # print(f"{corners[r-1][0].tolist() = }")
                 _, rvec, tvec = cv2.solvePnP(objp, corners, K, D)
                 R, _ = cv2.Rodrigues(rvec)
                 P = K.dot(np.hstack([R, tvec]))
@@ -99,43 +98,50 @@ if __name__ == '__main__':
                     for i, pt in enumerate(src_pts):
                         pt = tuple(map(int, pt)) 
                         cv2.circle(img, pt, 10, (0, 0, 255), -1)
-                        cv2.putText(img, str(i), pt, cv2.FONT_HERSHEY_COMPLEX, 2, (255, 255, 255), 2)
+                        cv2.putText(img, str(i), pt, cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
 
                     for i, pt in enumerate(dst_pts):
                         pt = tuple(map(int, pt))
                         cv2.circle(img, pt, 10, (0, 255, 0), -1)
-                        cv2.putText(img, str(i), (pt[0]+40, pt[1]+40), cv2.FONT_HERSHEY_COMPLEX, 2, (255, 255, 255), 2)
+                        cv2.putText(img, str(i), (pt[0]+40, pt[1]+40), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
 
+                # Warping image
                 M = cv2.getPerspectiveTransform(src_pts, dst_pts)
                 proj_img = cv2.warpPerspective(img, M, (img.shape[1], img.shape[0]))
                 # cv2.drawFrameAxes(proj_img, K, D, rvec, tvec, 3.0)
 
+                # Masked image
+                src_pts = np.array([src_pts[0], src_pts[1], src_pts[3],src_pts[2]], np.int32) # ordering of points didn't align correctly
+                mask = np.zeros((img.shape[0:2]), dtype=np.uint8)
+                cv2.fillPoly(mask, [src_pts], 255)
+                masked_img = cv2.bitwise_and(img, img, mask = mask)
+
+                # Drawing cubes
                 x = y = z = 0
-                blank_img = np.zeros((img.shape), dtype=np.uint8)
                 for i in range(0, pattern[0] - 1, 2):
                     for j in range(0, pattern[1] - 1, 2):
-                            pose_img = draw_cube(blank_img, P, (x + i), (y + j), z, 1, 1, (10, 10, 100))
-
+                            draw_cube(masked_img, P, (x + i), (y + j), z, 1, 1, (10, 10, 100))
+                
                 welcome_img = cv2.putText(np.zeros((img.shape), dtype=np.uint8), "Welcome!", (img.shape[1]//2-200, img.shape[0]//2), cv2.FONT_HERSHEY_SIMPLEX, 4, (0, 255, 0), 4, cv2.LINE_AA)
-                proj_img    = cv2.putText(proj_img, "proj_img", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2, cv2.LINE_AA)
-                pose_img    = cv2.putText(pose_img, "pose_img", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2, cv2.LINE_AA)
-                img         = cv2.putText(img, "original_img", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2, cv2.LINE_AA)
+                img         = cv2.putText(img, "original_img", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 2, cv2.LINE_AA)
+                masked_img  = cv2.putText(masked_img, "masked_img", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 2, cv2.LINE_AA)
+                proj_img    = cv2.putText(proj_img, "proj_img", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 2, cv2.LINE_AA)
             else:
-                cv2.putText(proj_img, "No corners detected", (10, proj_img.shape[0]-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 2, cv2.LINE_AA)
-                cv2.putText(pose_img, "No corners detected", (10, pose_img.shape[0]-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 2, cv2.LINE_AA)
                 cv2.putText(img, "No corners detected", (10, img.shape[0]-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 2, cv2.LINE_AA)
+                cv2.putText(proj_img, "No corners detected", (10, proj_img.shape[0]-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 2, cv2.LINE_AA)
+                cv2.putText(masked_img, "No corners detected", (10, proj_img.shape[0]-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 2, cv2.LINE_AA)
                 
             # Resizing
             img_scale = 0.35
-            resize1 = cv2.resize(proj_img, None, fx=img_scale, fy=img_scale, interpolation=cv2.INTER_AREA)
-            resize2 = cv2.resize(pose_img, None, fx=img_scale, fy=img_scale, interpolation=cv2.INTER_AREA)
-            resize3 = cv2.resize(img, None, fx=img_scale, fy=img_scale, interpolation=cv2.INTER_AREA)
-            resize4 = cv2.resize(welcome_img, None, fx=img_scale, fy=img_scale, interpolation=cv2.INTER_AREA)
+            resize1 = cv2.resize(welcome_img, None, fx=img_scale, fy=img_scale, interpolation=cv2.INTER_AREA)
+            resize2 = cv2.resize(img, None, fx=img_scale, fy=img_scale, interpolation=cv2.INTER_AREA)
+            resize3 = cv2.resize(proj_img, None, fx=img_scale, fy=img_scale, interpolation=cv2.INTER_AREA)
+            resize4 = cv2.resize(masked_img, None, fx=img_scale, fy=img_scale, interpolation=cv2.INTER_AREA)
 
             # Concat imgs together for better viz
-            half1  = cv2.hconcat([resize3, resize2]) 
-            half2  = cv2.hconcat([resize4, resize1]) 
-            result = cv2.vconcat([half2, half1]) 
+            half1  = cv2.hconcat([resize1, resize2]) 
+            half2  = cv2.hconcat([resize3, resize4]) 
+            result = cv2.vconcat([half1, half2]) 
 
             cv2.imshow('result', result)
 

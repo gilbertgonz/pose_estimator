@@ -17,4 +17,4 @@ COPY --from=build / /
 
 WORKDIR /app
 
-ENTRYPOINT ["./pose_estimator.py"]
+CMD ["./pose_estimator.py"]
