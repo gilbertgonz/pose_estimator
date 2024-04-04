@@ -62,7 +62,7 @@ if __name__ == '__main__':
     objp[:, :2] = np.mgrid[0:r, 0:c].T.reshape(-1, 2)
 
     # Open video file
-    video_path = 'test_assets/IMG_0447.mov'
+    video_path = 'test_assets/test1.mov'
     cap = cv2.VideoCapture(video_path)
 
     try:
@@ -87,7 +87,7 @@ if __name__ == '__main__':
                 src_pts = np.float32([corners[0][0].tolist(), corners[r-1][0].tolist(), corners[(r*c)-r][0].tolist(), corners[(r*c)-1][0].tolist()])
 
                 # Computing dst
-                scale = 50
+                scale = 35
                 scaled_r, scaled_c = r*scale, c*scale
                 t_x = img.shape[1]/2 - (scaled_r / 2)
                 t_y = img.shape[0]/2 - (scaled_c / 2)
