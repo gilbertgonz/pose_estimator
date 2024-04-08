@@ -14,6 +14,7 @@ from kalmanfilter import KalmanFilter
 # - understand kalman filter
 # - organize kalman filter code
 # - why is polyfitting the kalman results so slow?
+# - dockerize
 
 kalman_predict = True
 polynomial_predict = True
