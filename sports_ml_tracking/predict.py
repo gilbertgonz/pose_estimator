@@ -10,28 +10,23 @@ from ultralytics import YOLO
 from kalmanfilter import KalmanFilter 
 
 ## TODO:
-# - continue training model
 # - understand kalman filter
 # - organize kalman filter code
-# - why is polyfitting the kalman results so slow?
 # - dockerize
+# - put into its own repo
 
 kalman_predict = True
 polynomial_predict = True
 
-########################
-
-noise = 3
+# Kalman filter params
 fps = 70
 dt = 1/fps
-
 A = np.eye(4)
 A[0, 2] = dt
 A[1, 3] = dt
 
 # gravity control
 u = np.array([0, 50])
-
 B = np.zeros((4, 2))
 B[0, 0] = dt**2/2
 B[1, 1] = dt**2/2
@@ -43,15 +38,13 @@ mu = np.array([0,0,0,0])
 P = np.diag([10,10,10,10])**2
 res=[]
 
-########################
-
 data = {'ball':[],
         'rim':[]}
 
 x_list = []
 y_list = []
 
-def detect(cv_image, thresh=0.1):
+def detect(cv_image, thresh=0.5):
     results = model(cv_image, conf=thresh, verbose=False)
 
     for r in results:
@@ -61,9 +54,9 @@ def detect(cv_image, thresh=0.1):
             x1, y1, x2, y2 = bbox
             c = box.cls
 
-            if c == 0: # ball
+            if c == 0:
                 data['ball'] += [(int((x1 + x2) / 2), int((y1 + y2) / 2))] # center of ball
-            if c == 1: # rim
+            if c == 1:
                 data['rim'] += [((x1, y1), (x2, y1))] # top-left and top-right of rim
 
     return results
@@ -72,8 +65,6 @@ if __name__ == '__main__':
     model = YOLO('best.pt')
 
     count = 0
-
-    # plotted_img = np.zeros((1080, 1920, 3), dtype=np.uint8)
 
     # Set GPU if available
     if torch.cuda.is_available():
@@ -84,36 +75,35 @@ if __name__ == '__main__':
     model.to(device=device)
 
     # video_path = "test_assets/cropped.mp4"
-    video_path = "/home/gilberto/Downloads/test_imgs/steph4.mov"
+    video_path = "/home/gilberto/Downloads/test_imgs/steph2.mov"
     # video_path = "/home/gilberto/Downloads/test_imgs/klay.mov"
 
     vid = cv2.VideoCapture(video_path)
 
-    while True:
-        plotted_img = np.zeros((1080, 1920, 3), dtype=np.uint8)
-        
+    while True:        
         success, frame = vid.read()
         kf = KalmanFilter()
 
         if success:
             results = detect(frame)
 
-            # if len(data['rim']) > 0:
-            #     print(f"{data['rim'][-1][0][0] = }")
-
             annotated_frame = results[0].plot()
 
-            if len(data['ball']) > 0:
-                cv2.circle(plotted_img, data['ball'][-1], 20, (0, 255, 0), 2)
-                x_list.append(data['ball'][-1][0])
-                y_list.append(data['ball'][-1][1])
+            if len(data['ball']) > 0 and len(data['rim']) > 0:
+                ball_x = data['ball'][-1][0]
+                ball_y = data['ball'][-1][1]
+                rim_x1 = data['rim'][-1][0][0]
+                rim_x2 = data['rim'][-1][1][0]
+                rim_y  = data['rim'][-1][0][1]
+
+                x_list.append(ball_x)
+                y_list.append(ball_y)
                 
                 # Kalman filter
                 if kalman_predict:
-                    predicted, mu, statePost, errorCovPre = kf.predict(int(data['ball'][-1][0]), int(data['ball'][-1][1]))
+                    predicted, mu, statePost, errorCovPre = kf.predict(int(ball_x), int(ball_y))
                     mu,P = kf.kal(mu,P,B,u,z=None)
                 
-                    ##### Prediction #####
                     res += [(mu,P)]
                     mu2 = mu
                     P2 = P
@@ -135,73 +125,70 @@ if __name__ == '__main__':
                     xpu = [np.sqrt(P[0,0]) for _,P in res2]
                     ypu = [np.sqrt(P[1,1]) for _,P in res2]
 
-                    # # predicted next step
-                    # cv2.circle(annotated_frame,(int(xe[-1]),int(ye[-1])),5,(255, 255, 0),-1)
+                    # # Draw predicted line
+                    # for n in range(len(xp)):
+                    #     cv2.circle(annotated_frame, (int(xp[n]),int(yp[n])), 5, (255, 0, 255), -1)
+                        
+                    if count > 0:
+                        Ak, Bk, Ck = np.polyfit(xp, yp, 2)
+                        for x in range(frame.shape[1]):
+                            y = int(Ak * x ** 2 + Bk * x + Ck)
+                            cv2.circle(annotated_frame,(x, y), 5, (255, 0, 255), -1)
 
-                    # print(f"{xp = }")
-                    if count > 1:
-                        for n in range(len(xp)): # x e y predicha
-                            # incertidumbreP=(xpu[n]+ypu[n])/25
-                            cv2.circle(annotated_frame,(int(xp[n]),int(yp[n])),5,(255, 0, 255), -1)
-                            # Ak, Bk, Ck = np.polyfit(xp, yp, 2)
-                            # for x in range(((len(xp)) + 1000)):
-                            #     y = int(Ak * x ** 2 + Bk * x + Ck)
-                            #     cv2.circle(annotated_frame,(x, y), 5, (0, 0, 255), cv2.FILLED)
+                        a = Ak
+                        b = Bk
+                        c = Ck - rim_y
 
-                            #     # if len(data['rim']) > 0:
-                            #     a = Ak
-                            #     b = Bk
-                            #     c = Ck - data['rim'][-1][0][1]
+                        d = b*b - 4*a*c # discriminant
+                        if d >= 0:
+                            x1 = int((-b - math.sqrt(d)) / (2 * a)) # solution 1
+                            x2 = int((-b + math.sqrt(d)) / (2 * a)) # solution 2
 
-                            #     discriminant = b ** 2 - 4 * a * c
+                        cv2.circle(annotated_frame,(int(rim_x1), int(rim_y)), 5, (0, 255, 0), 5)
+                        cv2.circle(annotated_frame,(int(rim_x2), int(rim_y)), 5, (0, 255, 0), 5)
+                        cv2.circle(annotated_frame,(x1, int(rim_y)), 5, (255, 255, 0), 5)
+                        cv2.circle(annotated_frame,(x2, int(rim_y)), 5, (255, 255, 0), 5)
 
-                            #     # Check if the discriminant is non-negative
-                            #     if discriminant >= 0:
-                                
-                            #         x = int((-b - math.sqrt(b ** 2 - (4 * a * c))) / (2 * a))
-
-                            #         cv2.circle(annotated_frame,(x, int(data['rim'][-1][1][1])), 5, (255, 255, 0), 5)
-
+                        if int(rim_x1) < x1 < int(rim_x2) or int(rim_x1) < x2 < int(rim_x2):
+                            cv2.putText(annotated_frame, "Basket", (int(annotated_frame.shape[1] - 250), 100), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 5, cv2.LINE_AA)
                     
                     count += 1
 
                 # Polynomial regression
                 if polynomial_predict:
                     Ap, Bp, Cp = np.polyfit(x_list, y_list, 2)
-                    for x in range(((len(x_list)) + 1000)):
+                    for x in range(frame.shape[1]):
                         y = int(Ap * x ** 2 + Bp * x + Cp)
-                        cv2.circle(annotated_frame,(x, y), 5, (0, 0, 255), cv2.FILLED)
+                        cv2.circle(annotated_frame,(x, y), 5, (0, 0, 255), -1)
 
-                    if len(data['rim']) > 0:
-                        a = Ap
-                        b = Bp
-                        c = Cp - data['rim'][-1][0][1]
+                    a = Ap
+                    b = Bp
+                    c = Cp - rim_y
 
-                        x = int((-b - math.sqrt(b ** 2 - (4 * a * c))) / (2 * a))
+                    d = b*b - 4*a*c # discriminant
+                    if d >= 0:
+                        x1 = int((-b - math.sqrt(d)) / (2 * a)) # solution 1
+                        x2 = int((-b + math.sqrt(d)) / (2 * a)) # solution 2
 
-                        # print(f"{data['rim'][-1][0][1] = }")
-                        # print(f"{y = }")
+                    # Rim points
+                    cv2.circle(annotated_frame,(int(rim_x1), int(rim_y)), 5, (0, 255, 0), 5)
+                    cv2.circle(annotated_frame,(int(rim_x2), int(rim_y)), 5, (0, 255, 0), 5)
+                    
+                    # Ball point of intersection with rim_y
+                    cv2.circle(annotated_frame,(x1, int(rim_y)), 5, (255, 255, 0), 5)
+                    cv2.circle(annotated_frame,(x2, int(rim_y)), 5, (255, 255, 0), 5)
 
-                        cv2.circle(annotated_frame,(int(data['rim'][-1][0][0]), int(data['rim'][-1][0][1])), 5, (0, 255, 0), 5)
-                        cv2.circle(annotated_frame,(int(data['rim'][-1][1][0]), int(data['rim'][-1][1][1])), 5, (0, 255, 0), 5)
-                        cv2.circle(annotated_frame,(x, int(data['rim'][-1][1][1])), 5, (255, 255, 0), 5)
-
-                        if int(data['rim'][-1][0][0]) < x < int(data['rim'][-1][1][0]):
-                            cv2.putText(annotated_frame, "Basket", (int(annotated_frame.shape[1] - 250), 100), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 5, cv2.LINE_AA)
+                    # Check both solutions
+                    if int(rim_x1) < x1 < int(rim_x2) or int(rim_x1) < x2 < int(rim_x2):
+                        cv2.putText(annotated_frame, "Basket", (int(annotated_frame.shape[1] - 250), 100), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 5, cv2.LINE_AA)
             
             else:
                 continue
 
-            # # Draw rim
-            # if len(data['rim']) > 0:
-            #     cv2.ellipse(plotted_img, data['rim'][-1], (45, 10), 0, 0, 360, (255, 255, 0), 2) 
+            # img_scale = 0.8
+            # annotated_frame = cv2.resize(annotated_frame, None, fx=img_scale, fy=img_scale, interpolation=cv2.INTER_AREA)
 
-            img_scale = 0.8
-            resize1 = cv2.resize(annotated_frame, None, fx=img_scale, fy=img_scale, interpolation=cv2.INTER_AREA)
-            resize2 = cv2.resize(plotted_img, None, fx=img_scale, fy=img_scale, interpolation=cv2.INTER_AREA)
-
-            cv2.imshow("annotated_frame", resize1)
-            # cv2.imshow("plotter", resize2)
+            cv2.imshow("annotated_frame", annotated_frame)
 
             # key = cv2.waitKey(0) & 0xFF # show per frame
             key = cv2.waitKey(1)
