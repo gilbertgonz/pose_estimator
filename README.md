@@ -1,8 +1,6 @@
-# Exploratory computer vision repo, nothin serious
+# Exploring camera pose estimation applications
 
 Install [docker](https://docs.docker.com/engine/install/)
-
-## pose_estimator/
 
 To build:
 ```
