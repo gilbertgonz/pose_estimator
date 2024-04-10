@@ -74,8 +74,8 @@ if __name__ == '__main__':
 
     model.to(device=device)
 
-    # video_path = "test_assets/cropped.mp4"
-    video_path = "/home/gilberto/Downloads/test_imgs/steph2.mov"
+    video_path = "test_assets/steph.mov"
+    # video_path = "/home/gilberto/Downloads/test_imgs/steph2.mov"
     # video_path = "/home/gilberto/Downloads/test_imgs/klay.mov"
 
     vid = cv2.VideoCapture(video_path)
@@ -190,10 +190,10 @@ if __name__ == '__main__':
 
             cv2.imshow("annotated_frame", annotated_frame)
 
-            # key = cv2.waitKey(0) & 0xFF # show per frame
-            key = cv2.waitKey(1)
-            if key == ord(" "):  # Spacebar to pause
-                cv2.waitKey(-1)
+            key = cv2.waitKey(0) & 0xFF # show per frame
+            #key = cv2.waitKey(1)
+            #if key == ord(" "):  # Spacebar to pause
+            #    cv2.waitKey(-1)
 
         else:
             break
