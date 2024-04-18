@@ -4,6 +4,7 @@ import numpy as np
 import cv2
 import json
 import argparse
+import os
 
 def projpts(pts, P):
     projected = P.dot(pts)
@@ -40,29 +41,14 @@ def draw_cube(frame, P, x, y, z, w, h, color):
     
     return frame
     
-if __name__ == '__main__':
-    # Args
-    parser = argparse.ArgumentParser(description='Args')
-    parser.add_argument('--debug', type=bool, default=False, help="'--debug = True' for vizualizing corner points")
-    args = parser.parse_args()
+def save_images(path, img, counter):
+    os.makedirs(path, exist_ok=True)
+    filename = f"{path}/img_{counter:04d}.jpg"
+    cv2.imwrite(filename, img)
 
-    # Checkerboard params
-    pattern = (9, 6)
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.0001)
+def main():
+    img_counter = 0
 
-    # Load intrinsics
-    calibration_path = "calibration/iphone12.json"
-    with open(calibration_path, 'r') as json_file:
-        calibration_params = json.load(json_file)
-    D = np.array(calibration_params["distortion_coefficients"])
-    K = np.array(calibration_params["camera_matrix"])
-    
-    r, c = pattern
-    objp = np.zeros((r * c, 3), np.float32)
-    objp[:, :2] = np.mgrid[0:r, 0:c].T.reshape(-1, 2)
-
-    # Open video file
-    video_path = 'test_assets/test1.mov'
     cap = cv2.VideoCapture(video_path)
 
     try:
@@ -145,6 +131,10 @@ if __name__ == '__main__':
 
             cv2.imshow('result', result)
 
+            if save_path is not None:
+                save_images(save_path, result, img_counter)
+                img_counter += 1
+
             if key == ord('q'):
                 cv2.destroyAllWindows()
                 break
@@ -153,3 +143,31 @@ if __name__ == '__main__':
 
     cap.release()
     cv2.destroyAllWindows()
+
+if __name__ == '__main__':
+    # Args
+    parser = argparse.ArgumentParser(description='Args')
+    parser.add_argument('--debug', type=bool, default=False, help="'--debug = True' for vizualizing corner points")
+    args = parser.parse_args()
+
+    # Checkerboard params
+    pattern = (9, 6)
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.0001)
+
+    # Load intrinsics
+    calibration_path = "calibration/iphone12.json"
+    with open(calibration_path, 'r') as json_file:
+        calibration_params = json.load(json_file)
+    D = np.array(calibration_params["distortion_coefficients"])
+    K = np.array(calibration_params["camera_matrix"])
+    
+    r, c = pattern
+    objp = np.zeros((r * c, 3), np.float32)
+    objp[:, :2] = np.mgrid[0:r, 0:c].T.reshape(-1, 2)
+
+    # Open video file
+    video_path = 'assets/test1.mov'
+    save_path = None # "imgs"
+
+    main()
+    

@@ -1,13 +1,16 @@
 # Exploring camera pose estimation applications
 
-Install [docker](https://docs.docker.com/engine/install/)
+![](assets/results.gif)
 
-To build:
+## To run:
+1. Install [docker](https://docs.docker.com/engine/install/)
+
+2. Build:
 ```
 $ docker build -t pose_estimator .
 ```
 
-To run:
+3. Run:
 ```
 $ xhost +local:docker
 $ docker run --rm -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix pose_estimator
